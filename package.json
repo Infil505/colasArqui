@@ -1,5 +1,5 @@
 {
-  "name": "bookstore-queue",
+  "name": "colabookstore-queue",
   "private": true,
   "version": "1.0.0",
   "description": "CRUD diferido con CloudAMQP (RabbitMQ) + Netlify Functions + Vue 3",
