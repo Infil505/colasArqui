@@ -13,7 +13,7 @@ export const handler: Handler = async (event: { httpMethod: string; }) => {
   }
 
   const url = process.env.CLOUDAMQP_URL!;
-  const queue = process.env.QUEUE_NAME || "bookstore";
+  const queue = process.env.QUEUE_NAME || "";
   const max = parseInt(process.env.MAX_BATCH || "50", 10);
 
   const conn = await amqplib.connect(url);

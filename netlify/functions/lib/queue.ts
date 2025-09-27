@@ -8,7 +8,7 @@ export type QueueMessage = {
 
 export async function withChannel<T>(fn: (ch: amqplib.Channel) => Promise<T>): Promise<T> {
   const url = process.env.CLOUDAMQP_URL!;
-  const queue = process.env.QUEUE_NAME || "bookstore";
+  const queue = process.env.QUEUE_NAME || "";
   const conn = await amqplib.connect(url);
   try {
     const ch = await conn.createChannel();
@@ -23,7 +23,7 @@ export async function withChannel<T>(fn: (ch: amqplib.Channel) => Promise<T>): P
 
 export async function enqueueMessage(msg: QueueMessage) {
   return withChannel(async (ch) => {
-    const queue = process.env.QUEUE_NAME || "bookstore";
+    const queue = process.env.QUEUE_NAME || "";
     const ok = ch.sendToQueue(queue, Buffer.from(JSON.stringify(msg)), {
       contentType: "application/json",
       deliveryMode: 2,

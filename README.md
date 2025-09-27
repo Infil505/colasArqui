@@ -3,7 +3,6 @@
 CRUD **diferido** para **Autores** y **Editoriales** con **CloudAMQP (RabbitMQ)**, **Netlify Functions** y **Vue 3 + Vite**.
 
 ## ✅ Checklist de requisitos
-1. **CloudAMQP y cola `bookstore`**: usa `CLOUDAMQP_URL` y `QUEUE_NAME=bookstore`.
 2. **Autores**: componentes y funciones para **listar** y **administrar** (agregar/modificar/eliminar) en **forma diferida** (`/api/queue-authors` + `/api/authors-get`).
 3. **Editoriales**: idem autores (`/api/queue-publishers` + `/api/publishers-get`).
 4. **Botón frontend**: `Actualizar datos` → llama **`POST /api/run-queue`** y **refresca** automáticamente las listas (evento `refresh-data`).
