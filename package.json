@@ -1,0 +1,17 @@
+{
+  "name": "bookstore-queue",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CRUD diferido con CloudAMQP (RabbitMQ) + Netlify Functions + Vue 3",
+  "license": "MIT",
+  "scripts": {
+  },
+  "dependencies": {
+    "amqplib": "^0.10.4",
+    "mongodb": "^6.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.4"
+  }
+}
