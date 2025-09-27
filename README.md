@@ -10,12 +10,6 @@ CRUD **diferido** para **Autores** y **Editoriales** con **CloudAMQP (RabbitMQ)*
 5. **Publicación**: **backend** en **Netlify**. **frontend** puede ir en Netlify/Vercel/GitHub Pages. El FE permite configurar `VITE_API_BASE` para apuntar al backend en Netlify.
 6. **Entrega ZIP**: este paquete excluye `node_modules` y `dist` por `.gitignore`.
 
-## Variables de entorno (Netlify)
-- `MONGODB_URI` = mongodb+srv://...
-- `MONGODB_DB`  = `library`
-- `CLOUDAMQP_URL` = URL de CloudAMQP
-- `QUEUE_NAME` = `bookstore`
-- `MAX_BATCH` = `50` (opcional)
 
 ## Frontend: `VITE_API_BASE` (opcional)
 Si publicas el FE fuera de Netlify y necesitas apuntar al backend absoluto, crea un `.env` en `web/`:
