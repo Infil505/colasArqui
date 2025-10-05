@@ -7952,7 +7952,7 @@ module.exports = __toCommonJS(queue_authors_exports);
 var import_amqplib = __toESM(require_channel_api());
 async function withChannel(fn) {
   const url = process.env.CLOUDAMQP_URL;
-  const queue = process.env.QUEUE_NAME || "bookstore";
+  const queue = process.env.QUEUE_NAME || "";
   const conn = await import_amqplib.default.connect(url);
   try {
     const ch = await conn.createChannel();
@@ -7966,7 +7966,7 @@ async function withChannel(fn) {
 }
 async function enqueueMessage(msg) {
   return withChannel(async (ch) => {
-    const queue = process.env.QUEUE_NAME || "bookstore";
+    const queue = process.env.QUEUE_NAME || "";
     const ok = ch.sendToQueue(queue, Buffer.from(JSON.stringify(msg)), {
       contentType: "application/json",
       deliveryMode: 2

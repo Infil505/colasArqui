@@ -21,3 +21,8 @@ export async function publishersCol() {
   const d = await getDB();
   return d.collection("publishers");
 }
+
+export async function usersCol() {
+  const d = await getDB();
+  return d.collection("users");
+}
