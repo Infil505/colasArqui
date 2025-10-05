@@ -3,11 +3,10 @@ import { usersCol } from "./lib/db";
 import { withCors, handleOptions } from "./lib/cors";
 import * as bcrypt from "bcryptjs";
 
-export const handler: Handler = async (event: {
-  httpMethod: string;
-  body: any;
-}) => {
+export const handler: Handler = async (event: { httpMethod: string; body: any }) => {
+  // Manejar preflight
   if (event.httpMethod === "OPTIONS") return handleOptions();
+
   if (event.httpMethod !== "POST") {
     return withCors({
       statusCode: 405,
@@ -16,7 +15,7 @@ export const handler: Handler = async (event: {
   }
 
   try {
-    const { gmail, password } = JSON.parse(event.body || "{}");
+    const { gmail, password, name, action } = JSON.parse(event.body || "{}");
 
     if (!gmail || !password) {
       return withCors({
@@ -26,8 +25,39 @@ export const handler: Handler = async (event: {
     }
 
     const col = await usersCol();
-    const user = await col.findOne({ gmail });
 
+    // 🔹 REGISTRO DE NUEVO USUARIO
+    if (action === "register") {
+      const existingUser = await col.findOne({ gmail });
+      if (existingUser) {
+        return withCors({
+          statusCode: 409,
+          body: JSON.stringify({ error: "Este correo ya está registrado" }),
+        });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const result = await col.insertOne({
+        gmail,
+        password: hashedPassword,
+        name: name || gmail.split("@")[0], // usa el correo como nombre si no se envía
+        createdAt: new Date(),
+      });
+
+      return withCors({
+        statusCode: 201,
+        body: JSON.stringify({
+          message: "Usuario registrado correctamente",
+          _id: result.insertedId.toString(),
+          gmail,
+          name: name || gmail.split("@")[0],
+        }),
+      });
+    }
+
+    // 🔹 LOGIN DE USUARIO EXISTENTE
+    const user = await col.findOne({ gmail });
     if (!user) {
       return withCors({
         statusCode: 401,
@@ -36,7 +66,6 @@ export const handler: Handler = async (event: {
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-
     if (!isPasswordValid) {
       return withCors({
         statusCode: 401,
@@ -53,10 +82,10 @@ export const handler: Handler = async (event: {
       }),
     });
   } catch (error: any) {
-    console.error("Error en login:", error);
+    console.error("Error en login/registro:", error);
     return withCors({
       statusCode: 500,
-      body: JSON.stringify({ error: "Error de autenticación" }),
+      body: JSON.stringify({ error: "Error interno del servidor" }),
     });
   }
 };
