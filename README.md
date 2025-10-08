@@ -26,3 +26,7 @@ VITE_API_BASE=https://tu-sitio-backend.netlify.app
 ## Notas
 - Los `POST` envían `Content-Type: application/json`.
 - Tras **Actualizar datos**, se dispara un evento global `refresh-data` que recarga las listas.
+
+## Usuaeio de Prueba
+- admin1@gmail.com
+- admin
