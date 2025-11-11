@@ -1,12 +1,9 @@
 import { authorsCol, publishersCol, usersCol } from "./db";
-import { ObjectId } from "mongodb";
 import * as bcrypt from "bcrypt";
 
-function asId(id: any) {
-  if (typeof id === "string" && /^[a-f0-9]{24}$/i.test(id)) {
-    return new ObjectId(id);
-  }
-  return id;
+// Generar ID único simple
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 // ============= AUTORES =============
@@ -15,26 +12,37 @@ export async function applyAuthor(
   action: "create" | "update" | "delete",
   payload: any
 ) {
-  const col = await authorsCol();
+  const { redis, prefix } = await authorsCol();
 
   if (action === "create") {
     const { _id, ...rest } = payload;
-    await col.insertOne({ ...rest, createdAt: new Date() });
+    const newId = generateId();
+    const data = { ...rest, createdAt: new Date().toISOString() };
+    
+    await redis.set(`${prefix}${newId}`, JSON.stringify(data));
     return;
   }
 
   if (action === "update") {
     const { _id, ...rest } = payload;
-    await col.updateOne(
-      { _id: asId(_id) },
-      { $set: { ...rest, updatedAt: new Date() } }
-    );
+    
+    // Leer datos existentes
+    const existing = await redis.get(`${prefix}${_id}`);
+    if (!existing) throw new Error("Autor no encontrado");
+    
+    const updated = {
+      ...JSON.parse(existing),
+      ...rest,
+      updatedAt: new Date().toISOString()
+    };
+    
+    await redis.set(`${prefix}${_id}`, JSON.stringify(updated));
     return;
   }
 
   if (action === "delete") {
     const { _id } = payload;
-    await col.deleteOne({ _id: asId(_id) });
+    await redis.del(`${prefix}${_id}`);
   }
 }
 
@@ -44,26 +52,36 @@ export async function applyPublisher(
   action: "create" | "update" | "delete",
   payload: any
 ) {
-  const col = await publishersCol();
+  const { redis, prefix } = await publishersCol();
 
   if (action === "create") {
     const { _id, ...rest } = payload;
-    await col.insertOne({ ...rest, createdAt: new Date() });
+    const newId = generateId();
+    const data = { ...rest, createdAt: new Date().toISOString() };
+    
+    await redis.set(`${prefix}${newId}`, JSON.stringify(data));
     return;
   }
 
   if (action === "update") {
     const { _id, ...rest } = payload;
-    await col.updateOne(
-      { _id: asId(_id) },
-      { $set: { ...rest, updatedAt: new Date() } }
-    );
+    
+    const existing = await redis.get(`${prefix}${_id}`);
+    if (!existing) throw new Error("Editorial no encontrada");
+    
+    const updated = {
+      ...JSON.parse(existing),
+      ...rest,
+      updatedAt: new Date().toISOString()
+    };
+    
+    await redis.set(`${prefix}${_id}`, JSON.stringify(updated));
     return;
   }
 
   if (action === "delete") {
     const { _id } = payload;
-    await col.deleteOne({ _id: asId(_id) });
+    await redis.del(`${prefix}${_id}`);
   }
 }
 
@@ -77,11 +95,13 @@ export async function createUser(userData: {
   password: string;
   name: string;
 }) {
-  const col = await usersCol();
+  const { redis, prefix } = await usersCol();
 
-  // Verificar si el usuario ya existe
-  const existingUser = await col.findOne({ gmail: userData.gmail });
-  if (existingUser) {
+  // Verificar si el usuario ya existe (buscando por email)
+  const emailKey = `users:email:${userData.gmail}`;
+  const existingUserId = await redis.get(emailKey);
+  
+  if (existingUserId) {
     throw new Error("El usuario ya existe");
   }
 
@@ -89,16 +109,23 @@ export async function createUser(userData: {
   const saltRounds = 10;
   const hashedPassword = await bcrypt.hash(userData.password, saltRounds);
 
-  // Insertar el nuevo usuario
-  const result = await col.insertOne({
+  // Crear el nuevo usuario
+  const userId = generateId();
+  const user = {
     gmail: userData.gmail,
     password: hashedPassword,
     name: userData.name,
-    createdAt: new Date(),
-  });
+    createdAt: new Date().toISOString(),
+  };
+
+  // Guardar usuario
+  await redis.set(`${prefix}${userId}`, JSON.stringify(user));
+  
+  // Crear índice por email para búsquedas rápidas
+  await redis.set(emailKey, userId);
 
   return {
-    _id: result.insertedId,
+    _id: userId,
     gmail: userData.gmail,
     name: userData.name,
   };
@@ -108,13 +135,23 @@ export async function createUser(userData: {
  * Autentica un usuario verificando email y contraseña
  */
 export async function authenticateUser(gmail: string, password: string) {
-  const col = await usersCol();
+  const { redis, prefix } = await usersCol();
 
-  // Buscar el usuario por email
-  const user = await col.findOne({ gmail });
-  if (!user) {
+  // Buscar el usuario por email usando el índice
+  const emailKey = `users:email:${gmail}`;
+  const userId = await redis.get(emailKey);
+  
+  if (!userId) {
     throw new Error("Credenciales inválidas");
   }
+
+  // Obtener los datos del usuario
+  const userData = await redis.get(`${prefix}${userId}`);
+  if (!userData) {
+    throw new Error("Credenciales inválidas");
+  }
+
+  const user = JSON.parse(userData);
 
   // Verificar la contraseña
   const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -124,7 +161,7 @@ export async function authenticateUser(gmail: string, password: string) {
 
   // Retornar usuario sin la contraseña
   return {
-    _id: user._id,
+    _id: userId,
     gmail: user.gmail,
     name: user.name,
   };
@@ -133,41 +170,63 @@ export async function authenticateUser(gmail: string, password: string) {
 /**
  * Obtiene un usuario por su ID (sin contraseña)
  */
-export async function getUserById(userId: string | ObjectId) {
-  const col = await usersCol();
+export async function getUserById(userId: string) {
+  const { redis, prefix } = await usersCol();
   
-  const user = await col.findOne(
-    { _id: asId(userId) },
-    { projection: { password: 0 } } // Excluir contraseña
-  );
+  const userData = await redis.get(`${prefix}${userId}`);
+  if (!userData) return null;
 
-  return user;
+  const user = JSON.parse(userData);
+  
+  // Retornar sin contraseña
+  const { password, ...userWithoutPassword } = user;
+  return {
+    _id: userId,
+    ...userWithoutPassword
+  };
 }
 
 /**
  * Actualiza los datos de un usuario
  */
 export async function updateUser(
-  userId: string | ObjectId,
+  userId: string,
   updates: { name?: string; gmail?: string }
 ) {
-  const col = await usersCol();
+  const { redis, prefix } = await usersCol();
 
-  // Si se actualiza el email, verificar que no exista
-  if (updates.gmail) {
-    const existingUser = await col.findOne({
-      gmail: updates.gmail,
-      _id: { $ne: asId(userId) },
-    });
-    if (existingUser) {
-      throw new Error("El email ya está en uso");
-    }
+  // Obtener usuario actual
+  const userData = await redis.get(`${prefix}${userId}`);
+  if (!userData) {
+    throw new Error("Usuario no encontrado");
   }
 
-  await col.updateOne(
-    { _id: asId(userId) },
-    { $set: { ...updates, updatedAt: new Date() } }
-  );
+  const user = JSON.parse(userData);
+
+  // Si se actualiza el email, verificar que no exista
+  if (updates.gmail && updates.gmail !== user.gmail) {
+    const emailKey = `users:email:${updates.gmail}`;
+    const existingUserId = await redis.get(emailKey);
+    
+    if (existingUserId && existingUserId !== userId) {
+      throw new Error("El email ya está en uso");
+    }
+
+    // Eliminar el índice anterior de email
+    await redis.del(`users:email:${user.gmail}`);
+    
+    // Crear nuevo índice de email
+    await redis.set(emailKey, userId);
+  }
+
+  // Actualizar usuario
+  const updatedUser = {
+    ...user,
+    ...updates,
+    updatedAt: new Date().toISOString()
+  };
+
+  await redis.set(`${prefix}${userId}`, JSON.stringify(updatedUser));
 
   return getUserById(userId);
 }
@@ -176,17 +235,19 @@ export async function updateUser(
  * Cambia la contraseña de un usuario
  */
 export async function changePassword(
-  userId: string | ObjectId,
+  userId: string,
   oldPassword: string,
   newPassword: string
 ) {
-  const col = await usersCol();
+  const { redis, prefix } = await usersCol();
 
   // Obtener el usuario con contraseña
-  const user = await col.findOne({ _id: asId(userId) });
-  if (!user) {
+  const userData = await redis.get(`${prefix}${userId}`);
+  if (!userData) {
     throw new Error("Usuario no encontrado");
   }
+
+  const user = JSON.parse(userData);
 
   // Verificar la contraseña antigua
   const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
@@ -199,10 +260,13 @@ export async function changePassword(
   const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
   // Actualizar la contraseña
-  await col.updateOne(
-    { _id: asId(userId) },
-    { $set: { password: hashedPassword, updatedAt: new Date() } }
-  );
+  const updatedUser = {
+    ...user,
+    password: hashedPassword,
+    updatedAt: new Date().toISOString()
+  };
+
+  await redis.set(`${prefix}${userId}`, JSON.stringify(updatedUser));
 
   return true;
 }
@@ -210,9 +274,19 @@ export async function changePassword(
 /**
  * Elimina un usuario
  */
-export async function deleteUser(userId: string | ObjectId) {
-  const col = await usersCol();
-  await col.deleteOne({ _id: asId(userId) });
+export async function deleteUser(userId: string) {
+  const { redis, prefix } = await usersCol();
+  
+  // Obtener datos del usuario para eliminar índice de email
+  const userData = await redis.get(`${prefix}${userId}`);
+  if (userData) {
+    const user = JSON.parse(userData);
+    // Eliminar índice de email
+    await redis.del(`users:email:${user.gmail}`);
+  }
+  
+  // Eliminar usuario
+  await redis.del(`${prefix}${userId}`);
   return true;
 }
 
@@ -220,9 +294,26 @@ export async function deleteUser(userId: string | ObjectId) {
  * Lista todos los usuarios (sin contraseñas)
  */
 export async function listUsers() {
-  const col = await usersCol();
-  const users = await col
-    .find({}, { projection: { password: 0 } })
-    .toArray();
+  const { redis, prefix } = await usersCol();
+  
+  // Obtener todas las keys de usuarios
+  const keys = await redis.keys(`${prefix}*`);
+  
+  const users = [];
+  for (const key of keys) {
+    const userData = await redis.get(key);
+    if (userData) {
+      const user = JSON.parse(userData);
+      const userId = key.replace(prefix, "");
+      
+      // Excluir contraseña
+      const { password, ...userWithoutPassword } = user;
+      users.push({
+        _id: userId,
+        ...userWithoutPassword
+      });
+    }
+  }
+  
   return users;
 }

@@ -3,7 +3,12 @@ import { usersCol } from "./lib/db";
 import { withCors, handleOptions } from "./lib/cors";
 import * as bcrypt from "bcryptjs";
 
-export const handler: Handler = async (event: { httpMethod: string; body: any }) => {
+// Generar ID único
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+export const handler: Handler = async (event: { httpMethod: string; body: any; }) => {
   // Manejar preflight
   if (event.httpMethod === "OPTIONS") return handleOptions();
 
@@ -24,12 +29,15 @@ export const handler: Handler = async (event: { httpMethod: string; body: any })
       });
     }
 
-    const col = await usersCol();
+    const { redis, prefix } = await usersCol();
 
     // 🔹 REGISTRO DE NUEVO USUARIO
     if (action === "register") {
-      const existingUser = await col.findOne({ gmail });
-      if (existingUser) {
+      // Verificar si el usuario ya existe usando el índice de email
+      const emailKey = `users:email:${gmail}`;
+      const existingUserId = await redis.get(emailKey);
+      
+      if (existingUserId) {
         return withCors({
           statusCode: 409,
           body: JSON.stringify({ error: "Este correo ya está registrado" }),
@@ -37,34 +45,56 @@ export const handler: Handler = async (event: { httpMethod: string; body: any })
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-
-      const result = await col.insertOne({
+      const userId = generateId();
+      
+      const userData = {
         gmail,
         password: hashedPassword,
-        name: name || gmail.split("@")[0], // usa el correo como nombre si no se envía
-        createdAt: new Date(),
-      });
+        name: name || gmail.split("@")[0],
+        createdAt: new Date().toISOString(),
+      };
+
+      // Guardar usuario
+      await redis.set(`${prefix}${userId}`, JSON.stringify(userData));
+      
+      // Crear índice de email para búsquedas rápidas
+      await redis.set(emailKey, userId);
 
       return withCors({
         statusCode: 201,
         body: JSON.stringify({
           message: "Usuario registrado correctamente",
-          _id: result.insertedId.toString(),
+          _id: userId,
           gmail,
-          name: name || gmail.split("@")[0],
+          name: userData.name,
         }),
       });
     }
 
     // 🔹 LOGIN DE USUARIO EXISTENTE
-    const user = await col.findOne({ gmail });
-    if (!user) {
+    // Buscar usuario por email usando el índice
+    const emailKey = `users:email:${gmail}`;
+    const userId = await redis.get(emailKey);
+    
+    if (!userId) {
       return withCors({
         statusCode: 401,
         body: JSON.stringify({ error: "Credenciales inválidas" }),
       });
     }
 
+    // Obtener datos del usuario
+    const userData = await redis.get(`${prefix}${userId}`);
+    if (!userData) {
+      return withCors({
+        statusCode: 401,
+        body: JSON.stringify({ error: "Credenciales inválidas" }),
+      });
+    }
+
+    const user = JSON.parse(userData);
+
+    // Verificar contraseña
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return withCors({
@@ -76,7 +106,7 @@ export const handler: Handler = async (event: { httpMethod: string; body: any })
     return withCors({
       statusCode: 200,
       body: JSON.stringify({
-        _id: user._id.toString(),
+        _id: userId,
         gmail: user.gmail,
         name: user.name,
       }),

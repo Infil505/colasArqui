@@ -1,7 +1,7 @@
 {
 	"geolocation": {
 		"data": {
-			"city": "Tamarindo",
+			"city": "Santa Cruz",
 			"country": {
 				"code": "CR",
 				"name": "Costa Rica"
@@ -11,10 +11,10 @@
 				"name": "Guanacaste Province"
 			},
 			"timezone": "America/Costa_Rica",
-			"latitude": 10.2859,
-			"longitude": -85.7964,
-			"postalCode": "50309"
+			"latitude": 10.3972,
+			"longitude": -85.7365,
+			"postalCode": "50304"
 		},
-		"timestamp": 1759700418928
+		"timestamp": 1762747205919
 	}
 }
